@@ -8,19 +8,22 @@ import (
 
 	"wisp-server-go/filter"
 	"wisp-server-go/logging"
+	"wisp-server-go/options"
 	"wisp-server-go/packet"
 	"wisp-server-go/websocket"
 )
 
+// ServerStream represents a single TCP/UDP stream being proxied.
 type ServerStream struct {
-	StreamID   uint16
-	Conn       *ServerConnection
-	Socket     net.Conn
-	SendBuffer *websocket.AsyncQueue
+	StreamID    uint16
+	Conn        *ServerConnection
+	Socket      net.Conn
+	SendBuffer  *websocket.AsyncQueue
 	PacketsSent int
 	sync.Mutex
 }
 
+// NewServerStream creates a new ServerStream.
 func NewServerStream(streamID uint16, conn *ServerConnection, socket net.Conn) *ServerStream {
 	return &ServerStream{
 		StreamID:   streamID,
@@ -31,12 +34,14 @@ func NewServerStream(streamID uint16, conn *ServerConnection, socket net.Conn) *
 	}
 }
 
+// Setup starts the goroutines to handle TCP/UDP <-> WebSocket data transfer.
 func (ss *ServerStream) Setup() error {
 	go ss.tcpToWS()
 	go ss.wsToTCP()
 	return nil
 }
 
+// tcpToWS reads data from the TCP/UDP socket and sends it to the WebSocket.
 func (ss *ServerStream) tcpToWS() {
 	defer ss.Close()
 
@@ -49,7 +54,7 @@ func (ss *ServerStream) tcpToWS() {
 		}
 
 		dataPacket := &packet.WispPacket{
-			Type:      packet.TypeData,
+			Type:     packet.TypeData,
 			StreamID: ss.StreamID,
 			Payload: &packet.DataPayload{
 				Data: packet.NewWispBuffer(buffer[:n]),
@@ -65,6 +70,7 @@ func (ss *ServerStream) tcpToWS() {
 	}
 }
 
+// wsToTCP reads data from the WebSocket and writes it to the TCP/UDP socket.
 func (ss *ServerStream) wsToTCP() {
 	defer ss.Close()
 
@@ -82,12 +88,12 @@ func (ss *ServerStream) wsToTCP() {
 		}
 
 		ss.PacketsSent++
-		if ss.PacketsSent%(64) == 0 {
+		if ss.PacketsSent%64 == 0 {
 			continuePacket := &packet.WispPacket{
-				Type:      packet.TypeContinue,
+				Type:     packet.TypeContinue,
 				StreamID: ss.StreamID,
 				Payload: &packet.ContinuePayload{
-					BufferRemaining: uint32(ss.SendBuffer.Capacity() - ss.SendBuffer.Size()), // Use Capacity() instead of maxSize
+					BufferRemaining: uint32(ss.SendBuffer.Capacity() - ss.SendBuffer.Size()),
 				},
 			}
 
@@ -101,38 +107,45 @@ func (ss *ServerStream) wsToTCP() {
 	}
 }
 
+// Close closes the ServerStream's socket and send buffer.
 func (ss *ServerStream) Close() error {
 	ss.SendBuffer.Close()
 	return ss.Socket.Close()
 }
 
+// PutData adds data to the ServerStream's send buffer.
 func (ss *ServerStream) PutData(data []byte) error {
 	ss.SendBuffer.Put(data)
 	return nil
 }
 
+// ServerConnection represents a single connection from a Wisp client.
 type ServerConnection struct {
 	WS      *websocket.AsyncWebSocket
 	Path    string
 	Streams map[uint16]*ServerStream
 	ConnID  string
+	Options *options.OptionsStruct
 	sync.Mutex
 }
 
-func NewServerConnection(ws *websocket.AsyncWebSocket, path string) *ServerConnection {
+// NewServerConnection creates a new ServerConnection.
+func NewServerConnection(ws *websocket.AsyncWebSocket, path string, opt *options.OptionsStruct) *ServerConnection {
 	return &ServerConnection{
 		WS:      ws,
 		Path:    path,
 		Streams: make(map[uint16]*ServerStream),
 		ConnID:  websocket.GetConnID(),
+		Options: opt,
 	}
 }
 
+// Setup performs initial setup for the ServerConnection.
 func (sc *ServerConnection) Setup() error {
 	logging.Info(fmt.Sprintf("Setting up new WISP connection with ID %s", sc.ConnID))
 
 	initialContinuePacket := &packet.WispPacket{
-		Type:      packet.TypeContinue,
+		Type:     packet.TypeContinue,
 		StreamID: 0,
 		Payload: &packet.ContinuePayload{
 			BufferRemaining: 128,
@@ -148,7 +161,8 @@ func (sc *ServerConnection) Setup() error {
 	return nil
 }
 
-func (sc *ServerConnection) CreateStream(streamID uint16, streamType uint8, hostname string, port uint16) error {
+// CreateStream creates a new TCP or UDP stream.
+func (sc *ServerConnection) CreateStream(streamID uint16, streamType packet.StreamType, hostname string, port uint16) error {
 	sc.Lock()
 	defer sc.Unlock()
 
@@ -161,14 +175,14 @@ func (sc *ServerConnection) CreateStream(streamID uint16, streamType uint8, host
 		StreamType:  streamType,
 		Hostname:    hostname,
 		Port:        port,
-		StreamCount: len(sc.Streams), // Pass the total stream count
+		StreamCount: len(sc.Streams),
 	}
 
-	closeReason := filter.IsStreamAllowed(streamInfo) // Assuming IsStreamAllowed takes only StreamInfo
+	closeReason := filter.IsStreamAllowed(streamInfo, sc.Options)
 	if closeReason != 0 {
 		logging.Warn(fmt.Sprintf("(%s) Refusing to create a stream to %s:%d", sc.ConnID, hostname, port))
 		closePacket := &packet.WispPacket{
-			Type:      packet.TypeClose,
+			Type:     packet.TypeClose,
 			StreamID: streamID,
 			Payload: &packet.ClosePayload{
 				Reason: closeReason,
@@ -204,14 +218,15 @@ func (sc *ServerConnection) CreateStream(streamID uint16, streamType uint8, host
 		err := stream.Setup()
 		if err != nil {
 			logging.Error(fmt.Sprintf("(%s) Error setting up stream: %v", sc.ConnID, err))
-			sc.CloseStream(streamID, packet.ReasonNetworkError) // Use ReasonNetworkError
+			sc.CloseStream(streamID, packet.ReasonNetworkError)
 		}
 	}()
 
 	return nil
 }
 
-func (sc *ServerConnection) CloseStream(streamID uint16, reason uint8) error {
+// CloseStream closes a stream.
+func (sc *ServerConnection) CloseStream(streamID uint16, reason packet.CloseReason) error {
 	sc.Lock()
 	defer sc.Unlock()
 
@@ -228,6 +243,7 @@ func (sc *ServerConnection) CloseStream(streamID uint16, reason uint8) error {
 	return stream.Close()
 }
 
+// RoutePacket processes an incoming packet from the client.
 func (sc *ServerConnection) RoutePacket(data []byte) error {
 	packets, err := packet.ParseAllPackets(data)
 	if err != nil {
@@ -237,12 +253,16 @@ func (sc *ServerConnection) RoutePacket(data []byte) error {
 	for _, packet := range packets {
 		switch packet.Type {
 		case packet.TypeConnect:
-			payload := packet.Payload.(*packet.ConnectPayload)
+			payload, ok := packet.Payload.(*packet.ConnectPayload)
+			if !ok {
+				return fmt.Errorf("invalid payload type for CONNECT packet")
+			}
+
 			logging.Info(fmt.Sprintf("(%s) Opening new stream to %s:%d", sc.ConnID, payload.Hostname, payload.Port))
 			err := sc.CreateStream(packet.StreamID, payload.StreamType, payload.Hostname, payload.Port)
 			if err != nil {
 				logging.Error(fmt.Sprintf("(%s) Error creating stream: %v", sc.ConnID, err))
-				sc.CloseStream(packet.StreamID, packet.ReasonNetworkError) // Use ReasonNetworkError
+				sc.CloseStream(packet.StreamID, packet.ReasonNetworkError)
 			}
 
 		case packet.TypeData:
@@ -253,14 +273,21 @@ func (sc *ServerConnection) RoutePacket(data []byte) error {
 				logging.Warn(fmt.Sprintf("(%s) Received a DATA packet for a stream which doesn't exist", sc.ConnID))
 				continue
 			}
-			payload := packet.Payload.(*packet.DataPayload)
+			payload, ok := packet.Payload.(*packet.DataPayload)
+			if !ok {
+				return fmt.Errorf("invalid payload type for DATA packet")
+			}
 			stream.PutData(payload.Data.Bytes())
 
 		case packet.TypeContinue:
 			logging.Warn(fmt.Sprintf("(%s) Client sent a CONTINUE packet, this should never be possible", sc.ConnID))
 
 		case packet.TypeClose:
-			sc.CloseStream(packet.StreamID, packet.Payload.(*packet.ClosePayload).Reason)
+			payload, ok := packet.Payload.(*packet.ClosePayload)
+			if !ok {
+				return fmt.Errorf("invalid payload type for CLOSE packet")
+			}
+			sc.CloseStream(packet.StreamID, payload.Reason)
 
 		default:
 			logging.Warn(fmt.Sprintf("(%s) Unknown packet type: %d", sc.ConnID, packet.Type))
@@ -270,9 +297,11 @@ func (sc *ServerConnection) RoutePacket(data []byte) error {
 	return nil
 }
 
+// Run starts the ServerConnection's main loop.
 func (sc *ServerConnection) Run() error {
 	defer sc.WS.Close()
-        // Heartbeat to keep the connection alive
+
+	// Heartbeat to keep the connection alive
 	go func() {
 		for {
 			time.Sleep(30 * time.Second)

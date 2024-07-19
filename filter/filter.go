@@ -1,3 +1,4 @@
+// Package filter provides functions for filtering connections and streams.
 package filter
 
 import (
@@ -11,52 +12,52 @@ import (
 
 // StreamInfo holds information about a stream.
 type StreamInfo struct {
-	StreamType  uint8
+	StreamType  packet.StreamType
 	Hostname    string
 	Port        uint16
-	StreamCount int 
+	StreamCount int
 }
 
 // IsStreamAllowed checks if a stream is allowed based on the configuration.
-func IsStreamAllowed(info StreamInfo, options *options.OptionsStruct) uint8 {
+func IsStreamAllowed(info StreamInfo, options *options.OptionsStruct) packet.CloseReason {
 	// Check if TCP or UDP should be blocked
 	if info.StreamType == packet.StreamTypeTCP && !options.AllowTCPStreams {
-		return packet.CloseReasonHostBlocked
+		return packet.ReasonHostBlocked
 	}
 	if info.StreamType == packet.StreamTypeUDP && !options.AllowUDPStreams {
-		return packet.CloseReasonHostBlocked
+		return packet.ReasonHostBlocked
 	}
 
 	// Check the hostname whitelist/blacklist
 	if len(options.HostnameWhitelist) > 0 {
 		if isHostnameBlocked(info.Hostname, options.HostnameWhitelist, true) {
-			return packet.CloseReasonHostBlocked
+			return packet.ReasonHostBlocked
 		}
 	} else if len(options.HostnameBlacklist) > 0 {
 		if isHostnameBlocked(info.Hostname, options.HostnameBlacklist, false) {
-			return packet.CloseReasonHostBlocked
+			return packet.ReasonHostBlocked
 		}
 	}
 
 	// Check if the port is blocked
 	if len(options.PortWhitelist) > 0 {
 		if isPortBlocked(info.Port, options.PortWhitelist, true) {
-			return packet.CloseReasonHostBlocked
+			return packet.ReasonHostBlocked
 		}
 	} else if len(options.PortBlacklist) > 0 {
 		if isPortBlocked(info.Port, options.PortBlacklist, false) {
-			return packet.CloseReasonHostBlocked
+			return packet.ReasonHostBlocked
 		}
 	}
 
 	// Check for stream count limits
 	if options.StreamLimitTotal != -1 && info.StreamCount >= options.StreamLimitTotal {
-		return packet.CloseReasonConnThrottled
+		return packet.ReasonConnThrottled
 	}
 
 	if options.StreamLimitPerHost != -1 {
-		if info.StreamCount >= options.StreamLimitPerHost { 
-			return packet.CloseReasonConnThrottled
+		if info.StreamCount >= options.StreamLimitPerHost {
+			return packet.ReasonConnThrottled
 		}
 	}
 

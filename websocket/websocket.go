@@ -1,3 +1,4 @@
+// Package websocket provides an asynchronous wrapper for websocket connections.
 package websocket
 
 import (
@@ -206,6 +207,13 @@ func (q *AsyncQueue) Size() int {
 	q.cond.L.Lock()
 	defer q.cond.L.Unlock()
 	return len(q.queue)
+}
+
+// Capacity returns the capacity of the queue.
+func (q *AsyncQueue) Capacity() int {
+	q.cond.L.Lock()
+	defer q.cond.L.Unlock()
+	return cap(q.queue) // Modified to return the capacity of the queue
 }
 
 // WaitForClose waits for the queue to be closed.
