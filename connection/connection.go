@@ -54,7 +54,7 @@ func (ss *ServerStream) tcpToWS() {
 		}
 
 		dataPacket := &packet.WispPacket{
-			Type:     packet.TypeData,
+			Type:     packet.TypeData, 
 			StreamID: ss.StreamID,
 			Payload: &packet.DataPayload{
 				Data: packet.NewWispBuffer(buffer[:n]),
@@ -145,7 +145,7 @@ func (sc *ServerConnection) Setup() error {
 	logging.Info(fmt.Sprintf("Setting up new WISP connection with ID %s", sc.ConnID))
 
 	initialContinuePacket := &packet.WispPacket{
-		Type:     packet.TypeContinue,
+		Type:     packet.TypeContinue, 
 		StreamID: 0,
 		Payload: &packet.ContinuePayload{
 			BufferRemaining: 128,
@@ -185,7 +185,7 @@ func (sc *ServerConnection) CreateStream(streamID uint16, streamType packet.Stre
 			Type:     packet.TypeClose,
 			StreamID: streamID,
 			Payload: &packet.ClosePayload{
-				Reason: closeReason,
+				Reason: closeReason, 
 			},
 		}
 
@@ -199,9 +199,9 @@ func (sc *ServerConnection) CreateStream(streamID uint16, streamType packet.Stre
 	var socket net.Conn
 	var err error
 
-	if streamType == packet.StreamTypeTCP {
+	if streamType == packet.StreamTypeTCP { 
 		socket, err = net.Dial("tcp", fmt.Sprintf("%s:%d", hostname, port))
-	} else if streamType == packet.StreamTypeUDP {
+	} else if streamType == packet.StreamTypeUDP { 
 		socket, err = net.Dial("udp", fmt.Sprintf("%s:%d", hostname, port))
 	} else {
 		return fmt.Errorf("invalid stream type: %d", streamType)
@@ -250,30 +250,30 @@ func (sc *ServerConnection) RoutePacket(data []byte) error {
 		return fmt.Errorf("failed to parse packet: %w", err)
 	}
 
-	for _, packet := range packets {
-		switch packet.Type {
+	for _, p := range packets {
+		switch p.Type {
 		case packet.TypeConnect:
-			payload, ok := packet.Payload.(*packet.ConnectPayload)
+			payload, ok := p.Payload.(*packet.ConnectPayload)
 			if !ok {
 				return fmt.Errorf("invalid payload type for CONNECT packet")
 			}
 
 			logging.Info(fmt.Sprintf("(%s) Opening new stream to %s:%d", sc.ConnID, payload.Hostname, payload.Port))
-			err := sc.CreateStream(packet.StreamID, payload.StreamType, payload.Hostname, payload.Port)
+			err := sc.CreateStream(p.StreamID, payload.StreamType, payload.Hostname, payload.Port)
 			if err != nil {
 				logging.Error(fmt.Sprintf("(%s) Error creating stream: %v", sc.ConnID, err))
-				sc.CloseStream(packet.StreamID, packet.ReasonNetworkError)
+				sc.CloseStream(p.StreamID, packet.ReasonNetworkError)
 			}
 
 		case packet.TypeData:
 			sc.Lock()
-			stream, exists := sc.Streams[packet.StreamID]
+			stream, exists := sc.Streams[p.StreamID]
 			sc.Unlock()
 			if !exists {
 				logging.Warn(fmt.Sprintf("(%s) Received a DATA packet for a stream which doesn't exist", sc.ConnID))
 				continue
 			}
-			payload, ok := packet.Payload.(*packet.DataPayload)
+			payload, ok := p.Payload.(*packet.DataPayload)
 			if !ok {
 				return fmt.Errorf("invalid payload type for DATA packet")
 			}
@@ -283,14 +283,14 @@ func (sc *ServerConnection) RoutePacket(data []byte) error {
 			logging.Warn(fmt.Sprintf("(%s) Client sent a CONTINUE packet, this should never be possible", sc.ConnID))
 
 		case packet.TypeClose:
-			payload, ok := packet.Payload.(*packet.ClosePayload)
+			payload, ok := p.Payload.(*packet.ClosePayload)
 			if !ok {
 				return fmt.Errorf("invalid payload type for CLOSE packet")
 			}
-			sc.CloseStream(packet.StreamID, payload.Reason)
+			sc.CloseStream(p.StreamID, payload.Reason)
 
 		default:
-			logging.Warn(fmt.Sprintf("(%s) Unknown packet type: %d", sc.ConnID, packet.Type))
+			logging.Warn(fmt.Sprintf("(%s) Unknown packet type: %d", sc.ConnID, p.Type))
 		}
 	}
 

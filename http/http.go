@@ -7,6 +7,7 @@ import (
 	"wisp-server-go/connection"
 	"wisp-server-go/logging"
 	"wisp-server-go/websocket"
+	"wisp-server-go/options"
 )
 
 func StartServer() {
@@ -30,7 +31,9 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	conn := connection.NewServerConnection(ws, r.URL.Path)
+	opt := &options.OptionsStruct{}
+
+	conn := connection.NewServerConnection(ws, r.URL.Path, opt)
 	if err := conn.Setup(); err != nil {
 		logging.Error(fmt.Sprintf("Error setting up connection: %v", err))
 		return

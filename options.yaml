@@ -1,0 +1,13 @@
+hostname_whitelist:
+  - "google.com"
+hostname_blacklist:
+  - "blocked.com"
+port_whitelist:
+  - "80"
+  - "443"
+port_blacklist:
+  - "22"
+allow_tcp_streams: true
+allow_udp_streams: false
+stream_limit_total: 100
+stream_limit_per_host: 10
