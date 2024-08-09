@@ -41,7 +41,7 @@ const (
 // WispPacket represents a single packet in the Wisp protocol.
 type WispPacket struct {
 	Type     PacketType
-	StreamID uint16
+	StreamID uint32
 	Payload  interface{}
 }
 
@@ -49,7 +49,7 @@ type WispPacket struct {
 type ConnectPayload struct {
 	StreamType StreamType
 	Hostname   string
-	Port       uint16
+	Port       uint32
 }
 
 // DataPayload is the payload for a DATA packet.
@@ -79,7 +79,7 @@ func NewWispBuffer(buf []byte) *WispBuffer {
 
 // WriteString writes a string to the buffer with its length prefixed.
 func (wb *WispBuffer) WriteString(s string) error {
-	err := binary.Write(wb, binary.BigEndian, uint16(len(s)))
+	err := binary.Write(wb, binary.LittleEndian, uint32(len(s)))
 	if err != nil {
 		return err
 	}
@@ -89,8 +89,8 @@ func (wb *WispBuffer) WriteString(s string) error {
 
 // ReadString reads a length-prefixed string from the buffer.
 func (wb *WispBuffer) ReadString() (string, error) {
-	var length uint16
-	err := binary.Read(wb, binary.BigEndian, &length)
+	var length uint32
+	err := binary.Read(wb, binary.LittleEndian, &length)
 	if err != nil {
 		return "", err
 	}
@@ -108,14 +108,14 @@ func (wp *WispPacket) Serialize() *WispBuffer {
 	buffer := NewWispBuffer(nil)
 
 	buffer.WriteByte(byte(wp.Type))
-	binary.Write(buffer, binary.BigEndian, wp.StreamID)
+	binary.Write(buffer, binary.LittleEndian, wp.StreamID)
 
 	switch wp.Type {
 	case TypeConnect:
 		payload := wp.Payload.(*ConnectPayload)
 		buffer.WriteByte(byte(payload.StreamType))
 		buffer.WriteString(payload.Hostname)
-		binary.Write(buffer, binary.BigEndian, payload.Port)
+		binary.Write(buffer, binary.LittleEndian, payload.Port)
 
 	case TypeData:
 		payload := wp.Payload.(*DataPayload)
@@ -123,7 +123,7 @@ func (wp *WispPacket) Serialize() *WispBuffer {
 
 	case TypeContinue:
 		payload := wp.Payload.(*ContinuePayload)
-		binary.Write(buffer, binary.BigEndian, payload.BufferRemaining)
+		binary.Write(buffer, binary.LittleEndian, payload.BufferRemaining)
 
 	case TypeClose:
 		payload := wp.Payload.(*ClosePayload)
@@ -142,8 +142,8 @@ func ParsePacket(data []byte) (*WispPacket, error) {
 		return nil, err
 	}
 
-	var streamID uint16
-	err = binary.Read(buffer, binary.BigEndian, &streamID)
+	var streamID uint32
+	err = binary.Read(buffer, binary.LittleEndian, &streamID)
 	if err != nil {
 		return nil, err
 	}
@@ -165,8 +165,8 @@ func ParsePacket(data []byte) (*WispPacket, error) {
 			return nil, err
 		}
 
-		var port uint16
-		err = binary.Read(buffer, binary.BigEndian, &port)
+		var port uint32
+		err = binary.Read(buffer, binary.LittleEndian, &port)
 		if err != nil {
 			return nil, err
 		}
@@ -184,7 +184,7 @@ func ParsePacket(data []byte) (*WispPacket, error) {
 
 	case TypeContinue:
 		var bufferRemaining uint32
-		err = binary.Read(buffer, binary.BigEndian, &bufferRemaining)
+		err = binary.Read(buffer, binary.LittleEndian, &bufferRemaining)
 		if err != nil {
 			return nil, err
 		}

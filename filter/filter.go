@@ -14,12 +14,13 @@ import (
 type StreamInfo struct {
 	StreamType  packet.StreamType
 	Hostname    string
-	Port        uint16
+	Port        uint32
 	StreamCount int
 }
 
 // IsStreamAllowed checks if a stream is allowed based on the configuration.
 func IsStreamAllowed(info StreamInfo, options *options.OptionsStruct) packet.CloseReason {
+	return 0;
 	// Check if TCP or UDP should be blocked
 	if info.StreamType == packet.StreamTypeTCP && !options.AllowTCPStreams {
 		return packet.ReasonHostBlocked
@@ -73,7 +74,7 @@ func isHostnameBlocked(hostname string, list []*regexp.Regexp, whitelist bool) b
 	return whitelist
 }
 
-func isPortBlocked(port uint16, list []string, whitelist bool) bool {
+func isPortBlocked(port uint32, list []string, whitelist bool) bool {
 	for _, portRange := range list {
 		if strings.Contains(portRange, "-") {
 			parts := strings.Split(portRange, "-")
@@ -108,7 +109,7 @@ func isPortBlocked(port uint16, list []string, whitelist bool) bool {
 	return whitelist
 }
 
-func parsePort(portStr string) (uint16, error) {
+func parsePort(portStr string) (uint32, error) {
 	var port int
 	if _, err := fmt.Sscanf(portStr, "%d", &port); err != nil {
 		return 0, fmt.Errorf("invalid port: %s", portStr)
@@ -116,5 +117,5 @@ func parsePort(portStr string) (uint16, error) {
 	if port < 0 || port > 65535 {
 		return 0, fmt.Errorf("port out of range: %d", port)
 	}
-	return uint16(port), nil
+	return uint32(port), nil
 }

@@ -15,7 +15,7 @@ import (
 
 // ServerStream represents a single TCP/UDP stream being proxied.
 type ServerStream struct {
-	StreamID    uint16
+	StreamID    uint32
 	Conn        *ServerConnection
 	Socket      net.Conn
 	SendBuffer  *websocket.AsyncQueue
@@ -24,12 +24,12 @@ type ServerStream struct {
 }
 
 // NewServerStream creates a new ServerStream.
-func NewServerStream(streamID uint16, conn *ServerConnection, socket net.Conn) *ServerStream {
+func NewServerStream(streamID uint32, conn *ServerConnection, socket net.Conn) *ServerStream {
 	return &ServerStream{
-		StreamID:   streamID,
-		Conn:       conn,
-		Socket:     socket,
-		SendBuffer: websocket.NewAsyncQueue(128),
+		StreamID:    streamID,
+		Conn:        conn,
+		Socket:      socket,
+		SendBuffer:  websocket.NewAsyncQueue(128),
 		PacketsSent: 0,
 	}
 }
@@ -54,7 +54,7 @@ func (ss *ServerStream) tcpToWS() {
 		}
 
 		dataPacket := &packet.WispPacket{
-			Type:     packet.TypeData, 
+			Type:     packet.TypeData,
 			StreamID: ss.StreamID,
 			Payload: &packet.DataPayload{
 				Data: packet.NewWispBuffer(buffer[:n]),
@@ -123,7 +123,7 @@ func (ss *ServerStream) PutData(data []byte) error {
 type ServerConnection struct {
 	WS      *websocket.AsyncWebSocket
 	Path    string
-	Streams map[uint16]*ServerStream
+	Streams map[uint32]*ServerStream
 	ConnID  string
 	Options *options.OptionsStruct
 	sync.Mutex
@@ -134,7 +134,7 @@ func NewServerConnection(ws *websocket.AsyncWebSocket, path string, opt *options
 	return &ServerConnection{
 		WS:      ws,
 		Path:    path,
-		Streams: make(map[uint16]*ServerStream),
+		Streams: make(map[uint32]*ServerStream),
 		ConnID:  websocket.GetConnID(),
 		Options: opt,
 	}
@@ -145,7 +145,7 @@ func (sc *ServerConnection) Setup() error {
 	logging.Info(fmt.Sprintf("Setting up new WISP connection with ID %s", sc.ConnID))
 
 	initialContinuePacket := &packet.WispPacket{
-		Type:     packet.TypeContinue, 
+		Type:     packet.TypeContinue,
 		StreamID: 0,
 		Payload: &packet.ContinuePayload{
 			BufferRemaining: 128,
@@ -162,7 +162,7 @@ func (sc *ServerConnection) Setup() error {
 }
 
 // CreateStream creates a new TCP or UDP stream.
-func (sc *ServerConnection) CreateStream(streamID uint16, streamType packet.StreamType, hostname string, port uint16) error {
+func (sc *ServerConnection) CreateStream(streamID uint32, streamType packet.StreamType, hostname string, port uint32) error {
 	sc.Lock()
 	defer sc.Unlock()
 
@@ -185,7 +185,7 @@ func (sc *ServerConnection) CreateStream(streamID uint16, streamType packet.Stre
 			Type:     packet.TypeClose,
 			StreamID: streamID,
 			Payload: &packet.ClosePayload{
-				Reason: closeReason, 
+				Reason: closeReason,
 			},
 		}
 
@@ -199,9 +199,9 @@ func (sc *ServerConnection) CreateStream(streamID uint16, streamType packet.Stre
 	var socket net.Conn
 	var err error
 
-	if streamType == packet.StreamTypeTCP { 
+	if streamType == packet.StreamTypeTCP {
 		socket, err = net.Dial("tcp", fmt.Sprintf("%s:%d", hostname, port))
-	} else if streamType == packet.StreamTypeUDP { 
+	} else if streamType == packet.StreamTypeUDP {
 		socket, err = net.Dial("udp", fmt.Sprintf("%s:%d", hostname, port))
 	} else {
 		return fmt.Errorf("invalid stream type: %d", streamType)
@@ -226,7 +226,7 @@ func (sc *ServerConnection) CreateStream(streamID uint16, streamType packet.Stre
 }
 
 // CloseStream closes a stream.
-func (sc *ServerConnection) CloseStream(streamID uint16, reason packet.CloseReason) error {
+func (sc *ServerConnection) CloseStream(streamID uint32, reason packet.CloseReason) error {
 	sc.Lock()
 	defer sc.Unlock()
 
